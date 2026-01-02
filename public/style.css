@@ -1,0 +1,67 @@
+#new-chat-button {
+    position: fixed !important;
+    bottom: 56px !important;
+    
+    /* BAŞLANGIÇ NOKTASI (SOL) */
+    left: 50% !important;
+    
+    /* GÜÇLENDİRİLMİŞ İTME KUVVETİ */
+    /* 50px az geldiyse, 250px ile deneyelim */
+    transform: translateX(-285px) !important; 
+    
+    /* --- Diğer Ayarlar Aynı --- */
+    top: auto !important;
+    right: auto !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0px !important;
+    margin: 0 !important;
+    z-index: 99999;
+    color: #666 !important;
+    min-width: 30px !important;
+    width: 30px !important;
+    height: 30px !important;
+}
+
+/* Diğer kısımlar (hover, span, svg) aynı kalabilir */
+#new-chat-button:hover {
+    background-color: rgba(0,0,0,0.1) !important;
+    border-radius: 50%;
+    color: black !important;
+}
+#new-chat-button span { display: none !important; }
+#new-chat-button svg { width: 26px !important; height: 26px !important; }
+
+/* --- İKON DEĞİŞTİRME HİLESİ --- */
+
+/* 1. Orijinal SVG ikonunu gizle */
+#new-chat-button svg {
+    display: none !important; 
+}
+
+/* 2. Yerine Çöp Kutusu Emojisi Ekle */
+#new-chat-button::after {
+    content: "🗑️";         /* İkon buraya */
+    font-size: 18px;       /* Boyutu */
+    line-height: 1;
+    margin-top: 2px;       /* Hafif hizalama */
+}
+/* 1. Asistanın resmini içeren "KUTUYU" bul ve zorla büyüt */
+/* İçinde /public/Assistant.jpg geçen herhangi bir kapsayıcıyı hedefler */
+div:has(> img[src="/public/Assistant.jpg"]),
+span:has(> img[src="/public/Assistant.jpg"]) {
+    width: 40px !important;      /* Kutu Genişliği */
+    height: 40px !important;     /* Kutu Yüksekliği */
+    min-width: 40px !important;  /* Asla küçülmesin */
+    min-height: 40px !important; /* Asla küçülmesin */
+    border-radius: 50% !important; /* Tam yuvarlak olsun */
+    margin-top: -6px !important; /* Avatarı yukarı doğru çeker. */
+}
+
+/* 2. Resmin kendisini bu yeni büyük kutuya uydur */
+img[src="/public/Assistant.jpg"] {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important; /* Resmi bozmadan doldur */
+}
