@@ -5,9 +5,19 @@ import PyPDF2
 import io
 
 @cl.on_chat_start
-async def baslangic(): 
-    # Message history baslatma (bos liste)
-    cl.user_session.set("message_history", [])
+async def baslangic():
+    # System Prompt: Modeli her durumda <think> etiketlerini kullanmaya zorluyoruz
+    system_message = {
+        "role": "system", 
+        "content": (
+            "You are a helpful assistant. You must always behave as a reasoning model. "
+            "CRITICAL RULE: Every single response must start with a thought process enclosed within <think> and </think> tags. "
+            "If the user query is simple and requires no reasoning, you must still output <think> </think> (with a space inside) before providing your final answer. "
+            "Never provide an answer without these tags."
+        )
+    } 
+    # Message history'yi bu sistem mesajıyla başlatıyoruz
+    cl.user_session.set("message_history", [system_message])
     
     # Ayarlar
     settings = await cl.ChatSettings(
