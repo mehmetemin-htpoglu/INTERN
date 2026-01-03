@@ -118,29 +118,42 @@ async def main(message: cl.Message):
             stream=True
         )
 
-        thought_buffer = ""
         final_answer = "" 
         is_thinking = True 
+        buffer = "" # Etiketi yakalamak için geçici hafıza
 
         for chunk in stream:
             token = chunk['message']['content']
 
             if is_thinking:
-                if "</think>" in token:
+                buffer += token # Gelen parçaları birleştiriyoruz
+                
+                # Tamponda kapanış etiketi var mı diye kontrol et
+                if "</think>" in buffer:
                     is_thinking = False
-                    split_token = token.split("</think>")
-                    thought_buffer += split_token[0].replace("<think>", "")
-                    step.output = thought_buffer
                     
-                    if len(split_token) > 1:
-                        first_answer_part = split_token[1]
+                    # Tamponu parçala: düşünce kısmı ve cevap kısmı
+                    parts = buffer.split("</think>")
+                    thought_content = parts[0].replace("<think>", "").strip()
+                    first_answer_part = parts[1] if len(parts) > 1 else ""
+                    
+                    # Düşünce adımını tamamla ve güncelle (Ekrana temiz basar)
+                    step.output = thought_content
+                    await step.update()
+                    
+                    # Eğer etiketin hemen peşinden cevap geldiyse onu ana mesaja bas
+                    if first_answer_part:
                         final_answer += first_answer_part
                         await msg.stream_token(first_answer_part)
                 else:
+                    # Henüz etiket kapanmadıysa buffer'daki son eklenen kısmı canlı akıtmak yerine
+                    # sadece düşünce sürecine eklemeye devam edebiliriz.
+                    # Ancak canlı görünmesi için şimdilik token'ı step'e akıtabiliriz.
+                    # Not: Canlı akışta <think> yazısı görünebilir, son update ile temizlenir.
                     clean_token = token.replace("<think>", "")
-                    thought_buffer += clean_token
                     await step.stream_token(clean_token)
             else:
+                # Artık düşünme bitti, doğrudan ana cevaba yaz
                 final_answer += token
                 await msg.stream_token(token)
     
