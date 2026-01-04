@@ -1,0 +1,13 @@
+FROM deepseek-r1:14b
+
+# Modelin o karmaşık mantığını siliyoruz.
+# Sadece System mesajını, User mesajını ve Assistant etiketini basıyoruz.
+# Gerisini modelin doğal akışına bırakıyoruz.
+TEMPLATE """{{ .System }}
+<｜User｜>{{ .Prompt }}
+<｜Assistant｜>"""
+
+# Modelin saçmalamasını engelleyen durma noktalarını koruyoruz
+PARAMETER stop "<｜User｜>"
+PARAMETER stop "<｜Assistant｜>"
+PARAMETER stop "<｜end▁of▁sentence｜>"

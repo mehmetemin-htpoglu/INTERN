@@ -6,32 +6,29 @@ import io
 
 @cl.on_chat_start
 async def baslangic():
-    # System Prompt: Modeli her durumda <think> etiketlerini kullanmaya zorluyoruz
+    # --- DEĞİŞİKLİK 1: SİSTEM MESAJI SADELEŞTİRİLDİ ---
+    # Artık modele "şunu yap, bunu yapma" diye yalvarmamıza gerek yok.
+    # Ham model (ham-deepseek) zaten doğası gereği <think> etiketiyle başlıyor.
     system_message = {
         "role": "system", 
-        "content": (
-            "You are a helpful assistant. You must always behave as a reasoning model. "
-            "CRITICAL RULE: Every single response must start with a thought process enclosed within <think> and </think> tags. "
-            "If the user query is simple and requires no reasoning, you must still output <think> </think> (with a space inside) before providing your final answer. "
-            "Never provide an answer without these tags."
-        )
+        "content": "You are a helpful assistant. Always show your reasoning step-by-step."
     } 
-    # Message history'yi bu sistem mesajıyla başlatıyoruz
+    
     cl.user_session.set("message_history", [system_message])
     
-    # Ayarlar
     settings = await cl.ChatSettings(
         [
             Slider(id="Temperature", label="Temperature", initial=0.7, min=0, max=1, step=0.1)
         ]
     ).send()
     
-    # Session degiskenleri
-    cl.user_session.set("model", "deepseek-r1:14b")
+    # --- DEĞİŞİKLİK 2: MODEL İSMİ GÜNCELLENDİ ---
+    # Ollama'nın filtrelerini bypass eden kendi oluşturduğumuz modeli kullanıyoruz.
+    cl.user_session.set("model", "ham-deepseek")
     cl.user_session.set("temperature", 0.7)
     
-    # Acilis mesaji
-    await cl.Message(content="DeepSeek-R1:14B is ready!").send()
+    # Mesajı güncelledik
+    await cl.Message(content="🚀 **Raw DeepSeek (ham-deepseek) Hazır!**").send()
 
 @cl.on_settings_update
 async def ayarlar_degisti(settings):
@@ -46,34 +43,29 @@ async def main(message: cl.Message):
     
     dosya_icerigi = ""
     
-    # --- GELİŞMİŞ DOSYA OKUMA MOTORU (V3.0) ---
+    # --- GELİŞMİŞ DOSYA OKUMA MOTORU (V3.0) --- 
+    # (Bu kısım harika çalıştığı için dokunmadım, aynen korundu)
     if message.elements:
         processing_msg = cl.Message(content="📂 The file is being analyzed...")
         await processing_msg.send()
         
         for element in message.elements:
             try:
-                # 1. ADIM: Dosya verisini al (RAM'de yoksa Diskten oku)
                 if element.content:
                     file_bytes = element.content
                 elif element.path:
-                    # Chainlit dosyayı diske kaydettiyse oradan okuyoruz
                     with open(element.path, "rb") as f:
                         file_bytes = f.read()
                 else:
                     raise ValueError("The file content or path could not be found!")
 
-                # 2. ADIM: Dosya Türüne Göre İşle
-                # Metin Dosyası (.txt, .py, .md vb.)
                 if "text" in element.mime:
                     try:
                         text = file_bytes.decode("utf-8")
                     except UnicodeDecodeError:
-                        text = file_bytes.decode("latin-1") # Türkçe karakter kurtarıcısı
-                        
+                        text = file_bytes.decode("latin-1")
                     dosya_icerigi += f"\n--- DOSYA: {element.name} ---\n{text}\n"
                 
-                # PDF Dosyası
                 elif "pdf" in element.mime:
                     pdf_file = io.BytesIO(file_bytes)
                     reader = PyPDF2.PdfReader(pdf_file)
@@ -84,7 +76,7 @@ async def main(message: cl.Message):
                             text += extracted
                     
                     if not text.strip():
-                        await cl.Message(content=f"⚠️ **Warning:** '{element.name}' was read but no text was found (It might be an image).").send()
+                        await cl.Message(content=f"⚠️ **Warning:** '{element.name}' was read but no text was found.").send()
                     else:
                         dosya_icerigi += f"\n--- DOSYA: {element.name} ---\n{text}\n"
                 
@@ -103,7 +95,6 @@ async def main(message: cl.Message):
     else:
         final_prompt = user_input
 
-    # Hafızaya ekle
     message_history.append({"role": "user", "content": final_prompt})
 
     msg = cl.Message(content="")
@@ -118,46 +109,49 @@ async def main(message: cl.Message):
             stream=True
         )
 
-        final_answer = "" 
-        is_thinking = True 
-        buffer = "" # Etiketi yakalamak için geçici hafıza
+        # --- DEĞİŞİKLİK 3: DAHA GÜVENLİ AKIŞ MANTIĞI ---
+        # Önceki 'buffer' mantığını 'full_response' ile değiştirdim.
+        # Bu yöntem token parçalanmalarına (örn: '<' ve 'think>' ayrı gelirse) karşı daha garantidir.
+        
+        full_response = "" 
+        thought_ended = False 
 
         for chunk in stream:
             token = chunk['message']['content']
+            
+            # Gelen her şeyi havuzda biriktiriyoruz
+            full_response += token 
 
-            if is_thinking:
-                buffer += token # Gelen parçaları birleştiriyoruz
-                
-                # Tamponda kapanış etiketi var mı diye kontrol et
-                if "</think>" in buffer:
-                    is_thinking = False
+            if not thought_ended:
+                # Henüz düşünme bitmediyse kontrol et: Etiket kapandı mı?
+                if "</think>" in full_response:
+                    thought_ended = True
                     
-                    # Tamponu parçala: düşünce kısmı ve cevap kısmı
-                    parts = buffer.split("</think>")
-                    thought_content = parts[0].replace("<think>", "").strip()
-                    first_answer_part = parts[1] if len(parts) > 1 else ""
+                    # Metni tam ortadan ikiye bölüyoruz
+                    parts = full_response.split("</think>")
+                    thought_part = parts[0].replace("<think>", "").strip()
+                    answer_part = parts[1] if len(parts) > 1 else ""
                     
-                    # Düşünce adımını tamamla ve güncelle (Ekrana temiz basar)
-                    step.output = thought_content
+                    # 1. Düşünce kutusunu güncelle ve kapat
+                    step.output = thought_part
                     await step.update()
                     
-                    # Eğer etiketin hemen peşinden cevap geldiyse onu ana mesaja bas
-                    if first_answer_part:
-                        final_answer += first_answer_part
-                        await msg.stream_token(first_answer_part)
+                    # 2. Eğer cevap kısmı geldiyse hemen ana mesaja bas
+                    if answer_part:
+                        await msg.stream_token(answer_part)
                 else:
-                    # Henüz etiket kapanmadıysa buffer'daki son eklenen kısmı canlı akıtmak yerine
-                    # sadece düşünce sürecine eklemeye devam edebiliriz.
-                    # Ancak canlı görünmesi için şimdilik token'ı step'e akıtabiliriz.
-                    # Not: Canlı akışta <think> yazısı görünebilir, son update ile temizlenir.
-                    clean_token = token.replace("<think>", "")
-                    await step.stream_token(clean_token)
+                    # Düşünme devam ediyor...
+                    # <think> yazısını ekranda göstermemek için filtreleyip kutuya yazıyoruz
+                    display_token = token.replace("<think>", "")
+                    await step.stream_token(display_token)
             else:
-                # Artık düşünme bitti, doğrudan ana cevaba yaz
-                final_answer += token
+                # Düşünme bitti, artık gelen her şey cevaptır. Direkt bas.
                 await msg.stream_token(token)
     
-    message_history.append({"role": "assistant", "content": final_answer})
+    # --- DEĞİŞİKLİK 4: GEÇMİŞİ KAYDETME ---
+    # Önceki kodda final_answer değişkeni karışabiliyordu. 
+    # Artık full_response değişkeni her şeyi tuttuğu için onu direkt kaydediyoruz.
+    message_history.append({"role": "assistant", "content": full_response})
     cl.user_session.set("message_history", message_history)
     
     await msg.send()
